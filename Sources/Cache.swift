@@ -150,6 +150,12 @@ public class SimpleDiskCache: Cache {
     
     ///the directory to be used for saving images to disk
     public var cacheDirectory: String
+
+    ///the queue to use for background work of file I/O
+    public var backgroundQueue = DispatchQueue.global(qos: .background)
+
+    ///the queue to use to use for completion closures (probably the main queue).
+    public var completionQueue = DispatchQueue.main
     
     /**
      cacheDirectory default is the device's cache directory
@@ -174,8 +180,9 @@ public class SimpleDiskCache: Cache {
     public func get(url: URL, completion: @escaping ((Data?) -> Void)) {
         let hash = hashFrom(url: url)
         let cachePath = "\(cacheDirectory)/\(hash)"
-        DispatchQueue.global(qos: .background).async {
-            self.createCacheDirectory()
+        backgroundQueue.async { [weak self] in
+            guard let s = self else { return }
+            s.createCacheDirectory()
             let fileManager = FileManager.default
             if !fileManager.fileExists(atPath: cachePath) {
                 completion(nil)
@@ -184,9 +191,11 @@ public class SimpleDiskCache: Cache {
             do {
                 let attrs = try fileManager.attributesOfItem(atPath: cachePath)
                 let modifyDate = attrs[FileAttributeKey.modificationDate] as! Date
-                let expireDate = Date(timeIntervalSinceNow: TimeInterval(-self.timeoutAge))
+                let expireDate = Date(timeIntervalSinceNow: TimeInterval(-s.timeoutAge))
                 if modifyDate > expireDate {
-                    completion(nil)
+                    s.completionQueue.async {
+                        completion(nil)
+                    }
                     return
                 }
                 let data = fileManager.contents(atPath: cachePath)
@@ -200,7 +209,7 @@ public class SimpleDiskCache: Cache {
     public func save(url: URL, data: Data) {
         let hash = hashFrom(url: url)
         let cachePath = "\(cacheDirectory)/\(hash)"
-        DispatchQueue.global(qos: .background).async {
+        backgroundQueue.async {
             let fileManager = FileManager.default
             do {
                 try fileManager.removeItem(atPath: cachePath)
@@ -215,14 +224,15 @@ public class SimpleDiskCache: Cache {
     public func clean() {
         let resourceKeys : [URLResourceKey] = [.contentModificationDateKey]
         let directory = URL(fileURLWithPath: cacheDirectory)
-        DispatchQueue.global(qos: .background).async {
+        backgroundQueue.async { [weak self] in
+            guard let s = self else { return }
             let fileManager = FileManager.default
             guard let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: resourceKeys) else {return}
             for case let fileURL as URL in enumerator {
                 do {
                     let attrs = try fileURL.resourceValues(forKeys: Set(resourceKeys))
                     guard let modifyDate = attrs.attributeModificationDate else {continue}
-                    let expireDate = Date(timeIntervalSinceNow: TimeInterval(-self.timeoutAge))
+                    let expireDate = Date(timeIntervalSinceNow: TimeInterval(-s.timeoutAge))
                     if modifyDate > expireDate {
                          try fileManager.removeItem(at: fileURL)
                     }
@@ -235,7 +245,7 @@ public class SimpleDiskCache: Cache {
     
     public func purge() {
         let directory = cacheDirectory
-        DispatchQueue.global(qos: .background).async {
+        backgroundQueue.async { 
             let fileManager = FileManager.default
             guard let enumerator = fileManager.enumerator(atPath: directory) else {return}
             for case let fileURL as URL in enumerator {
