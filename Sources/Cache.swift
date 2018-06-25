@@ -21,6 +21,7 @@
 import Foundation
 
 public protocol Cache {
+    func get(url: URL) -> Data?
     func get(url: URL, completion: @escaping ((Data?) -> Void)) //get an image out of the cache asynchronously
     func save(url: URL, data: Data) //save an image to the cache
     func clean() ///clean up any old data. Useful for disk caches that could have old files laying around
@@ -33,6 +34,10 @@ public class SimpleCache: Cache {
     public var diskCache: Cache = SimpleDiskCache()
     
     init() {
+    }
+    
+    public func get(url: URL) -> Data? {
+        return memoryCache.get(url: url)
     }
     
     public func get(url: URL, completion: @escaping ((Data?) -> Void)) {
@@ -81,17 +86,21 @@ public class SimpleMemoryCache: Cache {
         #endif
     }
     
-    public func get(url: URL, completion: @escaping ((Data?) -> Void)) {
+    public func get(url: URL) -> Data? {
         let hash = hashFrom(url: url)
         mutex.lock()
         if let node = map[hash] {
             list.moveToFront(node)
             mutex.unlock()
-            completion(node.value)
-        } else {
-            mutex.unlock()
-            completion(nil)
+            return node.value
         }
+        mutex.unlock()
+        return nil
+    }
+    
+    public func get(url: URL, completion: @escaping ((Data?) -> Void)) {
+        let data = get(url: url)
+        completion(data)
     }
     
     public func save(url: URL, data: Data) {
@@ -175,6 +184,10 @@ public class SimpleDiskCache: Cache {
         #endif
         directory += "/ImageCache"
         return directory
+    }
+    
+    public func get(url: URL) -> Data? {
+        return nil
     }
     
     public func get(url: URL, completion: @escaping ((Data?) -> Void)) {

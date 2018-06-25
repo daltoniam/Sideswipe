@@ -41,6 +41,7 @@ public protocol ImageDecodable {
 }
 
 public protocol DataDecoder {
+    func decode(data: Data) -> Image?
     func decode(data: Data, completion: @escaping ((ImageDecodable?, Error?) -> Void))
     var scaleFactor: CGFloat {get}
 }
@@ -59,6 +60,10 @@ public extension DataDecoder {
 open class ImageDecoder: DataDecoder {
     public init() {
     }
+    open func decode(data: Data) -> Image? {
+        return Image(data: data, scale: scaleFactor)
+    }
+    
     open func decode(data: Data, completion: @escaping ((ImageDecodable?, Error?) -> Void)) {
         guard let ref = CGImageSourceCreateWithData(data as CFData, nil) else {
             completion(nil, DataDecoderError.invalidData)
@@ -71,10 +76,8 @@ open class ImageDecoder: DataDecoder {
         if UTTypeConformsTo(imageSourceContainerType, kUTTypeGIF) {
             let frameCount = CGImageSourceGetCount(ref)
             if frameCount < 2 {
-                DispatchQueue.main.sync {
-                    let image = Image(data: data, scale: scaleFactor)
-                    completion(image, nil)
-                }
+                let image = Image(data: data, scale: scaleFactor)
+                completion(image, nil)
             } else {
                 if let gif = AnimatedGif(ref: ref, data: data, scale: scaleFactor) {
                     completion(gif, nil)
@@ -83,10 +86,8 @@ open class ImageDecoder: DataDecoder {
                 }
             }
         } else if UTTypeConformsTo(imageSourceContainerType, kUTTypeImage) {
-            DispatchQueue.main.sync {
-                let image = Image(data: data, scale: scaleFactor) //UIImage & NSImage are suppose to be thread safe.... but bugs :D
-                completion(image, nil)
-            }
+            let image = Image(data: data, scale: scaleFactor)
+            completion(image, nil)
         }
     }
 }

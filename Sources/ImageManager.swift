@@ -28,6 +28,7 @@ import Foundation
 #endif
 
 public protocol ImageManagerClient: class {
+    func get(url: URL) -> Image?
     func get(url: URL, progress: ((Float) -> Void)?, completion: @escaping ((ImageDecodable?, Error?) -> Void))
 }
 
@@ -37,6 +38,11 @@ public class ImageManager: ImageManagerClient {
     public var networkLoader: NetworkLoader = URLSessionLoader()
     public var cache: Cache = SimpleCache()
     public var decoder: DataDecoder = ImageDecoder()
+    
+    public func get(url: URL) -> Image? {
+        guard let data = cache.get(url: url) else {return nil}
+        return decoder.decode(data: data)
+    }
     
     public func get(url: URL, progress: ((Float) -> Void)? = nil, completion: @escaping ((ImageDecodable?, Error?) -> Void)) {
         cache.get(url: url, completion: {[weak self] (data) in
